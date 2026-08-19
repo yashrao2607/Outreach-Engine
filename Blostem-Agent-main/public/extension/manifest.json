@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Outreach Engine - LinkedIn Recruiter Ingest",
+  "version": "1.0.0",
+  "description": "1-Click Recruiter profile ingestion into Outreach Engine pipeline",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.linkedin.com/*",
+    "http://localhost:3000/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

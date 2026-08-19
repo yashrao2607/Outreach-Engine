@@ -1,0 +1,201 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String   @default("")
+  createdAt    DateTime @default(now())
+  config       AppConfig?
+  contacts     HrContact[]
+  suppressions Suppression[]
+}
+
+/** App-wide singleton settings shared across all tenants (e.g. HMAC secret). */
+model GlobalSetting {
+  id                String @id @default("default")
+  unsubscribeSecret String @default("")
+}
+
+model AppConfig {
+  id                  String @id @default(cuid())
+  userId              String @unique
+  user                User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailUser           String @default("")
+  emailPass           String @default("")
+  geminiApiKey        String @default("")
+  groqApiKey          String @default("")
+  aiProvider          String @default("groq") // groq | gemini
+  candidateName       String @default("")
+  candidateEmail      String @default("")
+  candidatePhone      String @default("")
+  candidateLinkedin   String @default("")
+  companyWebsite     String @default("")
+  candidateCollege    String @default("")
+  candidateDegree     String @default("")
+  candidateSkills     String @default("[]")
+  candidateHighlights String @default("[]")
+  customInstructions  String @default("")
+  candidateCtaLink    String @default("")
+  candidateDocLink    String @default("")
+  appUrl              String @default("")
+  includeWebsite      Boolean @default(true)
+  includeLinkedin     Boolean @default(true)
+  tavilyApiKey        String @default("")
+  firecrawlApiKey     String @default("")
+  hunterApiKey        String @default("")
+  // Deliverability & compliance
+  companyAddress      String @default("")   // physical postal address (CAN-SPAM footer)
+  replyToEmail        String @default("")   // optional Reply-To override
+  enableTracking      Boolean @default(true) // open/click tracking on by default
+  dailySendLimit      Int @default(40)      // Gmail-safe cold cap per rolling 24h
+  minSendDelaySec     Int @default(180)     // min jitter between sends (3 min)
+  maxSendDelaySec     Int @default(300)     // max jitter between sends (5 min)
+  unsubscribeSecret   String @default("")   // HMAC secret for unsubscribe tokens (auto-generated)
+  // Follow-up Drip & A/B testing settings
+  enableFollowUps     Boolean @default(true)
+  followUp1DelayDays  Int @default(3)
+  followUp2DelayDays  Int @default(4)
+  maxFollowUpSteps    Int @default(2)
+  enableAbTesting     Boolean @default(true)
+  apiAuthToken        String @default("")   // token for LinkedIn extension / bookmarklet ingest
+  // Pitch deck / resume stored in the DB so it works on read-only hosts (Vercel)
+  resumeData          Bytes?
+  resumeName          String @default("")
+  updatedAt           DateTime @updatedAt
+}
+
+model Suppression {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email     String
+  reason    String   @default("unsubscribe") // unsubscribe | bounce | manual | complaint
+  source    String   @default("")            // contact id or note
+  createdAt DateTime @default(now())
+
+  @@unique([userId, email])
+  @@index([userId])
+}
+
+model HrContact {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  email        String
+  title        String   @default("")
+  company      String   @default("")
+  status       String   @default("pending")
+  subject      String?
+  body         String?
+  sentAt       DateTime?
+  error        String?
+  messageId    String?
+  // A/B Testing
+  abVariant    String   @default("A") // "A" | "B"
+  // Follow-up sequence state
+  followUpStep        Int       @default(0) // 0 = initial, 1 = follow-up 1, 2 = follow-up 2
+  followUpStatus      String    @default("idle") // "idle" | "pending" | "sent" | "cancelled"
+  lastFollowUpAt      DateTime?
+  nextFollowUpDue     DateTime?
+  // AI Reply Classification & Drafter
+  replyBody           String?
+  replySubject        String?
+  repliedAt           DateTime?
+  replyClassification String   @default("") // "INTERVIEW_INTEREST" | "FORWARDED" | "INFO_REQUESTED" | "REJECTION" | "OTHER"
+  replySnippet        String   @default("")
+  suggestedDraft      String   @default("")
+  // Open & Click tracking
+  opened       Boolean   @default(false)
+  openedAt     DateTime?
+  openCount    Int       @default(0)
+  clicked      Boolean   @default(false)
+  clickedAt    DateTime?
+  clickCount   Int       @default(0)
+  unsubscribed Boolean   @default(false)
+  unsubscribedAt DateTime?
+  bounced      Boolean   @default(false)
+  bouncedAt    DateTime?
+  ctaClicked   Boolean   @default(false)
+  ctaClickedAt DateTime?
+  docClicked   Boolean   @default(false)
+  docClickedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  followUps    HrFollowUp[]
+
+  @@index([userId])
+}
+
+model HrFollowUp {
+  id           String    @id @default(cuid())
+  contactId    String
+  contact      HrContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  step         Int       // 1 or 2
+  status       String    @default("pending") // pending | sent | failed | cancelled
+  subject      String
+  body         String
+  messageId    String?
+  sentAt       DateTime?
+  scheduledFor DateTime?
+  error        String?
+  opened       Boolean   @default(false)
+  openedAt     DateTime?
+  openCount    Int       @default(0)
+  clicked      Boolean   @default(false)
+  clickedAt    DateTime?
+  clickCount   Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([contactId])
+  @@index([status])
+}
+
+model CompanyResearch {
+  id               String   @id @default(cuid())
+  url              String
+  companyName      String   @default("")
+  industry         String   @default("")
+  description      String   @default("")
+  headquarters     String   @default("")
+  founded          String   @default("")
+  products         String   @default("[]")
+  socialLinks      String   @default("{}")
+  website          String   @default("")
+  revenueStage     String   @default("")
+  employeeCount    String   @default("")
+  recentNews       String   @default("[]")
+  rawCrawlData     String   @default("")
+  groundingSources String   @default("[]")
+  status           String   @default("pending")
+  error            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  contacts         DiscoveredContact[]
+}
+
+model DiscoveredContact {
+  id              String   @id @default(cuid())
+  researchId      String
+  research        CompanyResearch @relation(fields: [researchId], references: [id], onDelete: Cascade)
+  name            String
+  role            String   @default("")
+  department      String   @default("")
+  linkedinUrl     String   @default("")
+  email           String   @default("")
+  emailVerified   Boolean  @default(false)
+  confidence      Int      @default(0)
+  source          String   @default("")
+  addedToOutreach Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
